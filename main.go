@@ -140,7 +140,7 @@ func main() {
 		close(idleConnsClosed)
 	}(ctx, logger, shutdownDelay)
 
-	logger.Info().Str("addr", addr).Msg("staring server")
+	logger.Info().Str("addr", addr).Msg("starting server")
 	err := srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
