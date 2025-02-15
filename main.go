@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -89,6 +91,53 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func setupDummyUDS() error {
+	// These unix sockets are expected to exist on the real varnish servers
+	// (created by haproxy). If these do not exist we get warning messages looking
+	// like this when validating the VCL:
+	// ===
+	// Backend path: Cannot stat: No such file or directory
+	// ('/tmp/vcl-content3464804458' Line 17 Pos 11)
+	//   .path = "/shared/haproxy_https";
+	// ----------#######################-
+	//
+	// (That was just a warning)
+	// Backend path: Cannot stat: No such file or directory
+	// ('/tmp/vcl-content3464804458' Line 21 Pos 11)
+	//   .path = "/shared/haproxy_http";
+	// ----------######################-
+	//
+	// (That was just a warning)
+	// ===
+	// The validation still succeeds but when there are other actual errors having
+	// to disregard these are annoying. For this reason create some dummy files. We
+	// expect the Dockerfile to make sure the /shared directory is available and
+	// writeable for us.
+	unixSocketPaths := []string{
+		"/shared/haproxy_https",
+		"/shared/haproxy_http",
+	}
+
+	for _, socketPath := range unixSocketPaths {
+		// We only need a file entry on disk that looks like a socket
+		// file, not a properly initialized unix socket, so instead of using
+		// something like net.Listen() just use Mknod(). It needs to be
+		// an actual socket file otherwise varnishd will treat it as a
+		// error instead of a warning, throwing this error:
+		// "Backend path: Not a socket:"
+		err := syscall.Mknod(socketPath, syscall.S_IFSOCK|0o600, 0)
+		if err != nil {
+			// We do not do any cleanup of these files so if they
+			// already exist that is OK
+			if !errors.Is(err, fs.ErrExist) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -97,6 +146,11 @@ func main() {
 		Timestamp().
 		Str("service", "sunet-vcl-validator").
 		Logger()
+
+	err := setupDummyUDS()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Exit gracefully on SIGINT or SIGTERM
 	go func(logger zerolog.Logger, cancel context.CancelFunc) {
@@ -141,7 +195,7 @@ func main() {
 	}(ctx, logger, shutdownDelay)
 
 	logger.Info().Str("addr", addr).Msg("starting server")
-	err := srv.ListenAndServe()
+	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}
