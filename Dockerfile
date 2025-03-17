@@ -12,7 +12,7 @@ FROM platform.sunet.se/sunet-cdn/cdn-varnish:af7f7d11e61acf9f6113811615d1baa46da
 
 # Temporarily change user to root to allow directory creation
 USER root
-RUN mkdir /shared && chown varnish:varnish /shared
+RUN mkdir -p /shared/unix-sockets && chown -R varnish:varnish /shared
 # Change back to user from the base image
 USER varnish
 

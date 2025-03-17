@@ -98,24 +98,24 @@ func setupDummyUDS() error {
 	// ===
 	// Backend path: Cannot stat: No such file or directory
 	// ('/tmp/vcl-content3464804458' Line 17 Pos 11)
-	//   .path = "/shared/haproxy_https";
+	//   .path = "/shared/unix-sockets/haproxy_https";
 	// ----------#######################-
 	//
 	// (That was just a warning)
 	// Backend path: Cannot stat: No such file or directory
 	// ('/tmp/vcl-content3464804458' Line 21 Pos 11)
-	//   .path = "/shared/haproxy_http";
+	//   .path = "/shared/unix-sockets/haproxy_http";
 	// ----------######################-
 	//
 	// (That was just a warning)
 	// ===
 	// The validation still succeeds but when there are other actual errors having
 	// to disregard these are annoying. For this reason create some dummy files. We
-	// expect the Dockerfile to make sure the /shared directory is available and
-	// writeable for us.
+	// expect the Dockerfile to make sure the /shared/unix-sockets
+	// directory tree is available and writeable for us.
 	unixSocketPaths := []string{
-		"/shared/haproxy_https",
-		"/shared/haproxy_http",
+		"/shared/unix-sockets/haproxy_https",
+		"/shared/unix-sockets/haproxy_http",
 	}
 
 	for _, socketPath := range unixSocketPaths {
