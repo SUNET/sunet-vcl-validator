@@ -114,8 +114,8 @@ func setupDummyUDS() error {
 	// expect the Dockerfile to make sure the /shared/unix-sockets
 	// directory tree is available and writeable for us.
 	unixSocketPaths := []string{
-		"/shared/unix-sockets/haproxy_https",
-		"/shared/unix-sockets/haproxy_http",
+		"/shared/unix-sockets/haproxy_default_https",
+		"/shared/unix-sockets/haproxy_default_http",
 	}
 
 	for _, socketPath := range unixSocketPaths {
