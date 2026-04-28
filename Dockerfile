@@ -8,7 +8,7 @@ COPY . .
 RUN go mod download
 RUN CGO_ENABLED=0 go build -o /go/bin/sunet-vcl-validator
 
-FROM platform.sunet.se/sunet-cdn/cdn-varnish@sha256:2cf166b34db3cd87dd012183cf04c488fe834ef1575b450b069197ce2854440b
+FROM platform.sunet.se/sunet-cdn/cdn-varnish@sha256:3c67cd9f6368b98ec77a349c62ba6e589750e686f6e1f72da43ab7bcb064df92
 
 # Temporarily change user to root to allow directory creation
 USER root

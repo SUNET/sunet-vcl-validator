@@ -79,7 +79,7 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 
 	var stderr strings.Builder
 
-	cmd := exec.Command("/usr/sbin/varnishd", "-E", "/usr/lib/varnish/vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
+	cmd := exec.Command("/usr/sbin/varnishd", "-E", "/usr/lib/varnish/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
 	// The resulting C code (or error) is printed to stderr
 	cmd.Stderr = &stderr
 
