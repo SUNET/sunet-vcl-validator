@@ -167,10 +167,13 @@ func getVarnishdVersion() (string, string, error) {
 
 	after, found := strings.CutPrefix(line, "varnishd (varnish-")
 	if !found {
-		return line, "", fmt.Errorf("unexpected varnishd version format: %q", line)
+		return "", "", fmt.Errorf("unexpected varnishd version format: %q", line)
 	}
 
-	version, _, _ := strings.Cut(after, " ")
+	version, _, found := strings.Cut(after, " ")
+	if !found {
+		return "", "", fmt.Errorf("unexpected varnishd version format (no space after version): %q", line)
+	}
 
 	return line, version, nil
 }
