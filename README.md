@@ -8,7 +8,7 @@ submitted to it prior to adding it to the database.
 The service needs access to a `varnishd` binary for the actual validation so
 running it as a container is probably the easiest.
 ```
-docker build -t sunet-vcl-validator:latest .
+docker build --platform=linux/amd64 -t sunet-vcl-validator:latest .
 docker run -p 127.0.0.1:8888:8888 -it --rm sunet-vcl-validator:latest
 ```
 
