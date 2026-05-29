@@ -89,7 +89,6 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 
 	err = cmd.Run()
 	if err != nil {
-		logger.Err(err).Str("stderr", stderr.String()).Msg("varnishd failed")
 		http.Error(w, stderr.String(), http.StatusUnprocessableEntity)
 		return
 	}
