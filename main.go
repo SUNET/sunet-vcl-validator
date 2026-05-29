@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +20,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/hlog"
 )
+
+const varnishdCmd = "/usr/sbin/varnishd"
 
 func aliceRequestLoggerChain(zlog zerolog.Logger) alice.Chain {
 	chain := alice.New()
@@ -79,7 +83,7 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 
 	var stderr strings.Builder
 
-	cmd := exec.Command("/usr/sbin/varnishd", "-E", "/usr/lib/varnish/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
+	cmd := exec.Command(varnishdCmd, "-E", "/usr/lib/varnish/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
 	// The resulting C code (or error) is printed to stderr
 	cmd.Stderr = &stderr
 
@@ -138,6 +142,39 @@ func setupDummyUDS() error {
 	return nil
 }
 
+func getVarnishdVersion() (string, string, error) {
+	var stderr strings.Builder
+	cmd := exec.Command(varnishdCmd, "-V")
+	// The varnishd version info strings are printed to stderr, e.g.:
+	// ===
+	// varnishd (varnish-8.0.2 revision fb46a7bb50531f1a86e17173aa64116fd98a8b86)
+	// Copyright (c) 2006 Verdens Gang AS
+	// Copyright (c) 2006-2026 Varnish Software
+	// Copyright 2010-2026 UPLEX - Nils Goroll Systemoptimierung
+	// ===
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return "", "", fmt.Errorf("varnishd -V failed: %w (stderr: %q)", err, stderr.String())
+	}
+
+	line, _, _ := strings.Cut(stderr.String(), "\n")
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", "", fmt.Errorf("varnishd -V produced no version line")
+	}
+
+	after, found := strings.CutPrefix(line, "varnishd (varnish-")
+	if !found {
+		return line, "", fmt.Errorf("unexpected varnishd version format: %q", line)
+	}
+
+	version, _, _ := strings.Cut(after, " ")
+
+	return line, version, nil
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -145,12 +182,27 @@ func main() {
 	logger := zerolog.New(os.Stdout).With().
 		Timestamp().
 		Str("service", "sunet-vcl-validator").
+		Str("go", "sunet-vcl-validator").
+		Str("go_version", runtime.Version()).
 		Logger()
 
 	err := setupDummyUDS()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	varnishdFullVersion, varnishVersion, err := getVarnishdVersion()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("unable to get varnish version")
+	}
+
+	logger = logger.With().
+		Str("varnish_version", varnishVersion).
+		Logger()
+
+	// Log the complete varnishd version line at startup so we can see the
+	// full output as well.
+	logger.Info().Msg(varnishdFullVersion)
 
 	// Exit gracefully on SIGINT or SIGTERM
 	go func(logger zerolog.Logger, cancel context.CancelFunc) {
