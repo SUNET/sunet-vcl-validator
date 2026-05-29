@@ -1,6 +1,6 @@
 module sunet-vcl-validator
 
-go 1.25.7
+go 1.26.3
 
 require (
 	github.com/justinas/alice v1.2.0
