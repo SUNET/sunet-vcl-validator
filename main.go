@@ -21,7 +21,7 @@ import (
 	"github.com/rs/zerolog/hlog"
 )
 
-const varnishdCmd = "/usr/sbin/varnishd"
+const vinylCmd = "/usr/sbin/vinyld"
 
 func aliceRequestLoggerChain(zlog zerolog.Logger) alice.Chain {
 	chain := alice.New()
@@ -83,7 +83,7 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 
 	var stderr strings.Builder
 
-	cmd := exec.Command(varnishdCmd, "-E", "/usr/lib/varnish/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
+	cmd := exec.Command(vinylCmd, "-E", "/usr/lib/vinyl-cache/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
 	// The resulting C code (or error) is printed to stderr
 	cmd.Stderr = &stderr
 
@@ -95,7 +95,7 @@ func validateVCL(w http.ResponseWriter, r *http.Request) {
 }
 
 func setupDummyUDS() error {
-	// These unix sockets are expected to exist on the real varnish servers
+	// These unix sockets are expected to exist on the real vinyl servers
 	// (created by haproxy). If these do not exist we get warning messages looking
 	// like this when validating the VCL:
 	// ===
@@ -125,7 +125,7 @@ func setupDummyUDS() error {
 		// We only need a file entry on disk that looks like a socket
 		// file, not a properly initialized unix socket, so instead of using
 		// something like net.Listen() just use Mknod(). It needs to be
-		// an actual socket file otherwise varnishd will treat it as a
+		// an actual socket file otherwise vinyld will treat it as a
 		// error instead of a warning, throwing this error:
 		// "Backend path: Not a socket:"
 		err := syscall.Mknod(socketPath, syscall.S_IFSOCK|0o600, 0)
@@ -141,37 +141,38 @@ func setupDummyUDS() error {
 	return nil
 }
 
-func getVarnishdVersion() (string, string, error) {
+func getVinyldVersion() (string, string, error) {
 	var stderr strings.Builder
-	cmd := exec.Command(varnishdCmd, "-V")
-	// The varnishd version info strings are printed to stderr, e.g.:
+	cmd := exec.Command(vinylCmd, "-V")
+	// The vinyld version info strings are printed to stderr, e.g.:
 	// ===
-	// varnishd (varnish-8.0.2 revision fb46a7bb50531f1a86e17173aa64116fd98a8b86)
+	// vinyld (vinyl-cache-9.1.0 revision 7c558af697ded4f5461ff97d83b2febc8d647d50)
 	// Copyright (c) 2006 Verdens Gang AS
 	// Copyright (c) 2006-2026 Varnish Software
 	// Copyright 2010-2026 UPLEX - Nils Goroll Systemoptimierung
+	// Copyright 2026 The Vinyl Cache Project
 	// ===
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	if err != nil {
-		return "", "", fmt.Errorf("varnishd -V failed: %w (stderr: %q)", err, stderr.String())
+		return "", "", fmt.Errorf("vinyld -V failed: %w (stderr: %q)", err, stderr.String())
 	}
 
 	line, _, _ := strings.Cut(stderr.String(), "\n")
 	line = strings.TrimSpace(line)
 	if line == "" {
-		return "", "", fmt.Errorf("varnishd -V produced no version line")
+		return "", "", fmt.Errorf("vinyld -V produced no version line")
 	}
 
-	after, found := strings.CutPrefix(line, "varnishd (varnish-")
+	after, found := strings.CutPrefix(line, "vinyld (vinyl-cache-")
 	if !found {
-		return "", "", fmt.Errorf("unexpected varnishd version format: %q", line)
+		return "", "", fmt.Errorf("unexpected vinyld version format: %q", line)
 	}
 
 	version, _, found := strings.Cut(after, " ")
 	if !found {
-		return "", "", fmt.Errorf("unexpected varnishd version format (no space after version): %q", line)
+		return "", "", fmt.Errorf("unexpected vinyld version format (no space after version): %q", line)
 	}
 
 	return line, version, nil
@@ -193,18 +194,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	varnishdFullVersion, varnishVersion, err := getVarnishdVersion()
+	vinyldFullVersion, vinylVersion, err := getVinyldVersion()
 	if err != nil {
-		logger.Fatal().Err(err).Msg("unable to get varnish version")
+		logger.Fatal().Err(err).Msg("unable to get vinyl version")
 	}
 
 	logger = logger.With().
-		Str("varnish_version", varnishVersion).
+		Str("vinyl_version", vinylVersion).
 		Logger()
 
-	// Log the complete varnishd version line at startup so we can see the
+	// Log the complete vinyld version line at startup so we can see the
 	// full output as well.
-	logger.Info().Msg(varnishdFullVersion)
+	logger.Info().Msg(vinyldFullVersion)
 
 	// Exit gracefully on SIGINT or SIGTERM
 	go func(logger zerolog.Logger, cancel context.CancelFunc) {
