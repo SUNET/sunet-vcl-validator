@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -46,99 +44,90 @@ func aliceRequestLoggerChain(zlog zerolog.Logger) alice.Chain {
 	return chain
 }
 
-func validateVCL(w http.ResponseWriter, r *http.Request) {
-	logger := hlog.FromRequest(r)
+func newValidateVCLHandler(sockets *socketDir) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger := hlog.FromRequest(r)
 
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-	vcl, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "unable to read VCL", http.StatusBadRequest)
-		return
-	}
-
-	tmpFh, err := os.CreateTemp("", "vcl-content")
-	if err != nil {
-		http.Error(w, "unable to create tmp file", http.StatusInternalServerError)
-		return
-	}
-	defer os.Remove(tmpFh.Name())
-
-	logger.Info().Str("filename", tmpFh.Name()).Msg("created fh")
-
-	_, err = tmpFh.Write(vcl)
-	if err != nil {
-		http.Error(w, "unable to write to tmp file", http.StatusInternalServerError)
-		return
-	}
-
-	err = tmpFh.Close()
-	if err != nil {
-		http.Error(w, "unable to close tmp file", http.StatusInternalServerError)
-		return
-	}
-
-	var stderr strings.Builder
-
-	cmd := exec.Command(vinylCmd, "-E", "/usr/lib/vinyl-cache/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
-	// The resulting C code (or error) is printed to stderr
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	if err != nil {
-		http.Error(w, stderr.String(), http.StatusUnprocessableEntity)
-		return
-	}
-}
-
-func setupDummyUDS() error {
-	// These unix sockets are expected to exist on the real vinyl servers
-	// (created by haproxy). If these do not exist we get warning messages looking
-	// like this when validating the VCL:
-	// ===
-	// Backend path: Cannot stat: No such file or directory
-	// ('/tmp/vcl-content254944929' Line 20 Pos 11)
-	//   .path = "/haproxy-unix-sockets/haproxy_default_https";
-	// ----------#############################################-
-	//
-	// (That was just a warning)
-	// Backend path: Cannot stat: No such file or directory
-	// ('/tmp/vcl-content254944929' Line 23 Pos 11)
-	//   .path = "/haproxy-unix-sockets/haproxy_default_http";
-	// ----------############################################-
-	//
-	// (That was just a warning)
-	// ===
-	// The validation still succeeds but when there are other actual errors having
-	// to disregard these are annoying. For this reason create some dummy files. We
-	// expect the Dockerfile to make sure the /haproxy-unix-sockets
-	// directory tree is available and writeable for us.
-	unixSocketPaths := []string{
-		"/haproxy-unix-sockets/haproxy_default_https",
-		"/haproxy-unix-sockets/haproxy_default_http",
-	}
-
-	for _, socketPath := range unixSocketPaths {
-		// We only need a file entry on disk that looks like a socket
-		// file, not a properly initialized unix socket, so instead of using
-		// something like net.Listen() just use Mknod(). It needs to be
-		// an actual socket file otherwise vinyld will treat it as a
-		// error instead of a warning, throwing this error:
-		// "Backend path: Not a socket:"
-		err := syscall.Mknod(socketPath, syscall.S_IFSOCK|0o600, 0)
+		vcl, err := io.ReadAll(r.Body)
 		if err != nil {
-			// We do not do any cleanup of these files so if they
-			// already exist that is OK
-			if !errors.Is(err, fs.ErrExist) {
-				return err
-			}
+			http.Error(w, "unable to read VCL", http.StatusBadRequest)
+			return
+		}
+
+		// Fake the unix sockets the VCL refers to so vinyld does not
+		// complain about them, rejecting any path that would not exist
+		// on the real vinyl servers.
+		socketNames, err := socketNamesFromVCL(vcl)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+
+		releaseSockets, err := sockets.acquire(socketNames)
+		if err != nil {
+			logger.Err(err).Msg("unable to create sockets")
+			http.Error(w, "unable to create sockets", http.StatusInternalServerError)
+			return
+		}
+		defer releaseSockets()
+
+		tmpFh, err := os.CreateTemp("", "vcl-content")
+		if err != nil {
+			http.Error(w, "unable to create tmp file", http.StatusInternalServerError)
+			return
+		}
+		defer os.Remove(tmpFh.Name())
+
+		logger.Info().Str("filename", tmpFh.Name()).Msg("created fh")
+
+		_, err = tmpFh.Write(vcl)
+		if err != nil {
+			http.Error(w, "unable to write to tmp file", http.StatusInternalServerError)
+			return
+		}
+
+		err = tmpFh.Close()
+		if err != nil {
+			http.Error(w, "unable to close tmp file", http.StatusInternalServerError)
+			return
+		}
+
+		var stderr strings.Builder
+
+		cmd := exec.Command(vinylCmd, "-E", "/usr/lib/vinyl-cache/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
+		// The resulting C code (or error) is printed to stderr
+		cmd.Stderr = &stderr
+
+		err = cmd.Run()
+		if err != nil {
+			http.Error(w, stderr.String(), http.StatusUnprocessableEntity)
+			return
+		}
+
+		// Every allowed backend path has a socket by now, so any
+		// remaining complaint is about a path socketNamesFromVCL did not
+		// find (e.g. ". path /* comment */ = ...") and that would not
+		// work on the real vinyl servers.
+		warnings := backendPathWarnings(stderr.String())
+		if warnings != "" {
+			http.Error(w, fmt.Sprintf("backend path not allowed: must be a file directly in %s with a name matching %s, written as a line of its own in a backend: .path = \"%s/<name>\";\n\n%s", socketDirPath, socketNameRe, socketDirPath, warnings), http.StatusUnprocessableEntity)
+			return
+		}
+
+		// No complaint does not prove the paths are the ones we
+		// checked: an unrecognized path can resolve to one of our
+		// sockets, so compare with what vinyld actually compiled.
+		err = checkCompiledBackendPaths(vcl, stderr.String())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
 		}
 	}
-
-	return nil
 }
 
 func getVinyldVersion() (string, string, error) {
@@ -189,10 +178,11 @@ func main() {
 		Str("go_version", runtime.Version()).
 		Logger()
 
-	err := setupDummyUDS()
+	sockets, err := openSocketDir(socketDirPath, logger)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal().Err(err).Str("dir", socketDirPath).Msg("unable to open socket directory")
 	}
+	defer sockets.close()
 
 	vinyldFullVersion, vinylVersion, err := getVinyldVersion()
 	if err != nil {
@@ -230,7 +220,7 @@ func main() {
 		Handler:        loggingMux,
 	}
 
-	http.HandleFunc("/validate-vcl", validateVCL)
+	http.HandleFunc("/validate-vcl", newValidateVCLHandler(sockets))
 
 	shutdownDelay := time.Second * 3
 
