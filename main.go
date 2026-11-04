@@ -100,25 +100,25 @@ func setupDummyUDS() error {
 	// like this when validating the VCL:
 	// ===
 	// Backend path: Cannot stat: No such file or directory
-	// ('/tmp/vcl-content3464804458' Line 17 Pos 11)
-	//   .path = "/shared/unix-sockets/haproxy_https";
-	// ----------#######################-
+	// ('/tmp/vcl-content254944929' Line 20 Pos 11)
+	//   .path = "/haproxy-unix-sockets/haproxy_default_https";
+	// ----------#############################################-
 	//
 	// (That was just a warning)
 	// Backend path: Cannot stat: No such file or directory
-	// ('/tmp/vcl-content3464804458' Line 21 Pos 11)
-	//   .path = "/shared/unix-sockets/haproxy_http";
-	// ----------######################-
+	// ('/tmp/vcl-content254944929' Line 23 Pos 11)
+	//   .path = "/haproxy-unix-sockets/haproxy_default_http";
+	// ----------############################################-
 	//
 	// (That was just a warning)
 	// ===
 	// The validation still succeeds but when there are other actual errors having
 	// to disregard these are annoying. For this reason create some dummy files. We
-	// expect the Dockerfile to make sure the /shared/unix-sockets
+	// expect the Dockerfile to make sure the /haproxy-unix-sockets
 	// directory tree is available and writeable for us.
 	unixSocketPaths := []string{
-		"/shared/unix-sockets/haproxy_default_https",
-		"/shared/unix-sockets/haproxy_default_http",
+		"/haproxy-unix-sockets/haproxy_default_https",
+		"/haproxy-unix-sockets/haproxy_default_http",
 	}
 
 	for _, socketPath := range unixSocketPaths {

@@ -12,7 +12,7 @@ FROM platform.sunet.se/sunet-cdn/cdn-vinyl@sha256:910c3ffed7d883e5fc9a4e6f53db05
 
 # Temporarily change user to root to allow directory creation
 USER root
-RUN mkdir -p /shared/unix-sockets && chown -R vinyl:vinyl /shared
+RUN mkdir /haproxy-unix-sockets && chown -R vinyl:vinyl /haproxy-unix-sockets
 # Change back to user from the base image
 USER vinyl
 
