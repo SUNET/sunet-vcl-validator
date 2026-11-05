@@ -50,7 +50,48 @@ Running VCC-compiler failed, exited with 2
 VCL compilation failed
 ```
 
+## Backend unix socket paths
+On the real vinyl servers the backends are unix sockets created by haproxy in
+`/haproxy-unix-sockets`. Since those do not exist here, the validator creates
+dummy socket files for the backend `.path` values found in the submitted VCL
+so `vinyld` does not warn about them. Sockets are only created for the
+duration of the request and are shared by concurrent requests using the same
+name.
+
+Since the VCL content is untrusted, the request is rejected with
+`422 Unprocessable Entity` if:
+* A `.path` is not a file directly in `/haproxy-unix-sockets`, its file name
+  does not match `^[a-z0-9][a-z0-9_-]{0,127}$`, or it contains `.` or `..`
+  path components.
+* The VCL refers to more than 32 unique socket paths.
+* `vinyld` still complains about a backend path after the sockets were created
+  (e.g. a `.path` written in a way the validator did not recognize).
+* The backend paths `vinyld` compiled, as found in its generated C code, are
+  not exactly the paths the validator recognized in the VCL.
+
+Only backend paths laid out the way sunet-cdn-manager generates them get a
+socket: a line of its own holding `.path = "/haproxy-unix-sockets/...";`,
+with any indentation. Anything else, such as a backend written on one line,
+different spacing or
+["long strings"](https://vinyl-cache.org/docs/9.1/reference/vcl.html#strings)
+(`{"..."}` or `"""..."""`), gets none and is rejected, either
+because `vinyld` complains about the missing socket or because the compiled
+path is not one that was recognized. The latter also catches paths that
+resolve to a socket created anyway, like
+`{"/proc/self/root/haproxy-unix-sockets/..."}` or a socket created for another
+request running at the same time. Lines are found with a text match, so such a
+line inside a long string is also checked, and since it is not compiled as a
+backend path the request is rejected.
+
 ## Development
+### Tests
+`go test ./...` runs the unit tests. The tests in `vinyld_test.go` need
+`vinyld` and the `/haproxy-unix-sockets` directory, so they are skipped when
+`vinyld` is missing unless `SUNET_VCL_VALIDATOR_REQUIRE_VINYLD` is set. The
+container build runs all tests against the real `vinyld` with that variable
+set, so a base image update that changes how `vinyld` reports or compiles
+backend paths fails the build instead of silently disabling the checks.
+
 ### Formatting and linting
 When working with this code at least the following tools are expected to be
 run at the top level directory prior to commiting:
