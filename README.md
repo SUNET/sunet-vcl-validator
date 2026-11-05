@@ -95,7 +95,9 @@ backend paths fails the build instead of silently disabling the checks.
 Creating the dummy sockets is only supported on Linux, see
 `sockets_linux.go`. On other systems such as macOS the code still builds and
 the linters work, but the tests that create sockets are skipped. They run in
-the container build.
+the container build, which also runs the tests with the race detector
+(`go test -race ./...`), so building the container is a way to check the
+socket reference counting on such systems.
 
 ### Formatting and linting
 When working with this code at least the following tools are expected to be
