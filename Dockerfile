@@ -6,6 +6,11 @@ WORKDIR /go/src/sunet-vcl-validator
 COPY . .
 
 RUN go mod download
+# Run the tests with the race detector to check e.g. the socket reference
+# counting. The race detector needs cgo, so this is done here rather than with
+# the CGO_ENABLED=0 test binary below. The tests needing vinyld are skipped
+# here and run in the test stage.
+RUN go test -race ./...
 RUN CGO_ENABLED=0 go build -o /go/bin/sunet-vcl-validator
 RUN CGO_ENABLED=0 go test -c -o /go/bin/sunet-vcl-validator.test
 
