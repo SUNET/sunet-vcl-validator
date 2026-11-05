@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/rs/zerolog"
 )
@@ -210,7 +208,7 @@ type socketDir struct {
 	logger zerolog.Logger
 	root   *os.Root
 	// dir is the root directory opened as a file. os.Root has no Mknod
-	// so we need a directory file descriptor for syscall.Mknodat.
+	// so we need a directory file descriptor for mknodSocketAt.
 	dir *os.File
 
 	mu   sync.Mutex
@@ -327,13 +325,7 @@ func (s *socketDir) acquire(names []string) (func(), error) {
 // socket is fine (left over from a crash, it will be removed on release),
 // anything else in the way is an error.
 func (s *socketDir) create(name string) error {
-	// Fd() returns a uintptr while Mknodat wants an int. A closed or nil
-	// file also ends up here since Fd() then returns ^uintptr(0).
-	rawFd := s.dir.Fd()
-	if rawFd > math.MaxInt {
-		return fmt.Errorf("invalid socket directory file descriptor %d", rawFd)
-	}
-	err := syscall.Mknodat(int(rawFd), name, syscall.S_IFSOCK|0o600, 0)
+	err := mknodSocketAt(s.dir, name)
 	if err == nil {
 		return nil
 	}

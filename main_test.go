@@ -259,8 +259,18 @@ func isSocket(t *testing.T, path string) bool {
 	return true
 }
 
+// skipUnlessSocketsSupported skips tests that create sockets on systems
+// where mknodSocketAt can not, e.g. macOS.
+func skipUnlessSocketsSupported(t *testing.T) {
+	t.Helper()
+	if !socketsSupported {
+		t.Skip("creating dummy sockets is only supported on Linux")
+	}
+}
+
 func openTestSocketDir(t *testing.T, dir string) *socketDir {
 	t.Helper()
+	skipUnlessSocketsSupported(t)
 	sd, err := openSocketDir(dir, zerolog.Nop())
 	if err != nil {
 		t.Fatalf("openSocketDir: %s", err)
@@ -381,6 +391,7 @@ func TestSocketDirAcquireExistingSocket(t *testing.T) {
 
 func openTestSocketDirNoClean(t *testing.T, dir string) *socketDir {
 	t.Helper()
+	skipUnlessSocketsSupported(t)
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
