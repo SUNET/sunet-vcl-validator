@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 go test -c -o /go/bin/sunet-vcl-validator.test
 
 # The vinyl image is only pinned here so the tests below always run against
 # the same vinyld that is shipped.
-FROM platform.sunet.se/sunet-cdn/cdn-vinyl@sha256:910c3ffed7d883e5fc9a4e6f53db05fda99e28534f8c0abfe9e289b99e69ff0f AS vinyl
+FROM platform.sunet.se/sunet-cdn/cdn-vinyl@sha256:ca98ef781c48f0c02cb37c5b89578caf959211c7a6d93d4ed1e37063c90e1b72 AS vinyl
 
 # Temporarily change user to root to allow directory creation
 USER root
