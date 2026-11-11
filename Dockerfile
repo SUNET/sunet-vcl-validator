@@ -10,13 +10,19 @@ RUN go mod download
 # counting. The race detector needs cgo, so this is done here rather than with
 # the CGO_ENABLED=0 test binary below. The tests needing vinyld are skipped
 # here and run in the test stage.
+#
+# Set GOARCH to match the pinned --platform below.
 RUN go test -race ./...
-RUN CGO_ENABLED=0 go build -o /go/bin/sunet-vcl-validator
-RUN CGO_ENABLED=0 go test -c -o /go/bin/sunet-vcl-validator.test
+RUN CGO_ENABLED=0 GOARCH=amd64 go build -o /go/bin/sunet-vcl-validator
+RUN CGO_ENABLED=0 GOARCH=amd64 go test -c -o /go/bin/sunet-vcl-validator.test
 
 # The vinyl image is only pinned here so the tests below always run against
-# the same vinyld that is shipped.
-FROM platform.sunet.se/sunet-cdn/cdn-vinyl@sha256:ca98ef781c48f0c02cb37c5b89578caf959211c7a6d93d4ed1e37063c90e1b72 AS vinyl
+# the same vinyld that is shipped. Pin --platform to make builds work on macOS
+# since currently there are no linux/arm64 builds for cdn-vinyl. This causes a
+# 'FromPlatformFlagConstDisallowed: FROM --platform flag should not use constant value "linux/amd64"'
+# warning but let that be for now, the real solution would be to make cdn-vinyl
+# have a native arm64 build.
+FROM --platform=linux/amd64 platform.sunet.se/sunet-cdn/cdn-vinyl@sha256:ca98ef781c48f0c02cb37c5b89578caf959211c7a6d93d4ed1e37063c90e1b72 AS vinyl
 
 # Temporarily change user to root to allow directory creation
 USER root

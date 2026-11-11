@@ -275,3 +275,59 @@ func TestVinyldRejectsRecognizedPathOutsideBackend(t *testing.T) {
 		t.Fatalf("rejection does not show the offending path:\n%s", body)
 	}
 }
+
+func TestVinyldRejectsUnsafePaths(t *testing.T) {
+	h, _ := newVinyldTestHandler(t)
+
+	// Control: importing an approved VMOD by name is allowed.
+	code, body := postVCL(t, h, managerStyleVCL("import std;\n"))
+	if code != http.StatusOK {
+		t.Fatalf("plain import: got %d, want 200, body:\n%s", code, body)
+	}
+
+	tests := []struct {
+		name    string
+		tenant  string
+		want    string // must appear in the error
+		mustNot string // must not appear in the error
+	}{
+		{
+			// Compiles when unsafe_path is on, so only
+			// vcc_feature=none,+err_unref rejects it.
+			name:   "import by path",
+			tenant: `import std from "/usr/lib/vinyl-cache/vmods/libvmod_std.so";`,
+			want:   "'import ... from path ...' is unsafe.",
+		},
+		{
+			// Must be rejected for its path, without vinyld
+			// opening the file and echoing its content.
+			name:    "absolute include",
+			tenant:  `include "/etc/passwd";`,
+			want:    "VCL filename '/etc/passwd' is unsafe.",
+			mustNot: "root:",
+		},
+		{
+			// The image has /etc/vinyl-cache/default.vcl. With
+			// vcl_path pointing elsewhere it must not be found.
+			name:    "include from default vcl_path",
+			tenant:  `include "default.vcl";`,
+			want:    "Cannot read file 'default.vcl'",
+			mustNot: "/etc/vinyl-cache",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			code, body := postVCL(t, h, managerStyleVCL(tc.tenant+"\n"))
+			if code != http.StatusUnprocessableEntity {
+				t.Fatalf("got %d, want 422, body:\n%s", code, body)
+			}
+			if !strings.Contains(body, tc.want) {
+				t.Fatalf("error does not contain %q:\n%s", tc.want, body)
+			}
+			if tc.mustNot != "" && strings.Contains(body, tc.mustNot) {
+				t.Fatalf("error contains %q:\n%s", tc.mustNot, body)
+			}
+		})
+	}
+}

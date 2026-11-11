@@ -99,7 +99,10 @@ func newValidateVCLHandler(sockets *socketDir) http.HandlerFunc {
 
 		var stderr strings.Builder
 
-		cmd := exec.Command(vinylCmd, "-E", "/usr/lib/vinyl-cache/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
+		// This command mimics what sunet-cdn-agent uses when running
+		// vinyl cache, see
+		// https://github.com/SUNET/sunet-cdn-agent/blob/main/pkg/runner/templates/compose/default.template
+		cmd := exec.Command(vinylCmd, "-E", "/usr/lib/vinyl-cache/extension-vmods/libvmod_slash.so", "-s", "fellow=fellow,/cache/fellow-storage,1MB,1MB,1MB", "-p", "vcl_path=/service-versions/active/vinyl", "-p", "vcc_feature=none,+err_unref", "-C", "-f", tmpFh.Name()) // #nosec G204 -- tmpFh is controlled by us.
 		// The resulting C code (or error) is printed to stderr
 		cmd.Stderr = &stderr
 
